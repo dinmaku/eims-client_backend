@@ -394,37 +394,25 @@ def init_routes(app):
             app.logger.error(f"Error in get_booked_schedules route: {str(e)}")
             return jsonify({'error': str(e)}), 422
 
-    @app.route('/events', methods=['POST', 'OPTIONS'])
+    @app.route('/events', methods=['POST'])
     @jwt_required()
     def create_event():
-        if request.method == 'OPTIONS':
-            # Handle preflight request
-            response = jsonify({'message': 'OK'})
-            response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5174')
-            response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-            response.headers.add('Access-Control-Allow-Methods', 'POST,OPTIONS')
-            response.headers.add('Access-Control-Allow-Credentials', 'true')
-            return response, 200
-            
         try:
             # Get user ID from JWT token
             email = get_jwt_identity()
             userid = get_user_id_by_email(email)
             
             if not userid:
-                response = jsonify({
+                return jsonify({
                     'success': False,
                     'message': 'Invalid user token'
-                })
-                response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5174')
-                response.headers.add('Access-Control-Allow-Credentials', 'true')
-                return response, 401
+                }), 401
 
             data = request.get_json()
-            
+
             # Extract base event data
             event_data = {
-                'userid': userid,  # Use the userid from JWT token
+                'userid': userid,
                 'event_name': data.get('event_name'),
                 'event_type': data.get('event_type'),
                 'event_theme': data.get('event_theme'),
@@ -435,10 +423,9 @@ def init_routes(app):
                 'end_time': data.get('end_time'),
                 'status': data.get('status', 'Wishlist'),
                 'total_price': data.get('total_price', 0),
-                'booking_type': data.get('booking_type', 'Online')  # Add booking_type with default value 'Online'
+                'booking_type': data.get('booking_type', 'Online')
             }
 
-            # Package configuration data
             package_config = {
                 'suppliers': data.get('suppliers', []),
                 'outfits': data.get('outfits', []),
@@ -446,126 +433,91 @@ def init_routes(app):
                 'additional_items': data.get('additional_items', [])
             }
 
-            # Process additional services to ensure correct format
+            # Process additional services if needed
             if 'additional_services' in data:
                 for service in data['additional_services']:
-                    # Map service_id to add_service_id if needed
                     if 'service_id' in service and 'add_service_id' not in service:
                         service['add_service_id'] = service['service_id']
 
-            # If services come from inclusions array, extract them
-            if 'inclusions' in data and not data.get('services'):
-                data['services'] = []
-                for inclusion in data['inclusions']:
-                    if inclusion['type'] == 'service' and 'data' in inclusion:
-                        service_data = inclusion['data']
-                        # Ensure it has service_id
-                        if 'service_id' in service_data or 'add_service_id' in service_data:
-                            data['services'].append(service_data)
-            
-            # If suppliers come from inclusions array, extract them
-            if 'inclusions' in data and not data.get('suppliers'):
-                data['suppliers'] = []
-                for inclusion in data['inclusions']:
-                    if inclusion['type'] == 'supplier' and 'data' in inclusion:
-                        supplier_data = inclusion['data']
-                        # Ensure it has supplier_id
-                        if 'supplier_id' in supplier_data:
-                            data['suppliers'].append(supplier_data)
-            
-            # If outfits come from inclusions array, extract them
-            if 'inclusions' in data and not data.get('outfits'):
-                data['outfits'] = []
-                for inclusion in data['inclusions']:
-                    if inclusion['type'] == 'outfit' and 'data' in inclusion:
-                        outfit_data = inclusion['data']
-                        # Handle gown_package_id which might be called outfit_id in the frontend
-                        if 'outfit_id' in outfit_data and not outfit_data.get('gown_package_id'):
-                            outfit_data['gown_package_id'] = outfit_data['outfit_id']
-                        data['outfits'].append(outfit_data)
+            # Extract inclusions
+            if 'inclusions' in data:
+                # Services
+                if not data.get('services'):
+                    data['services'] = []
+                    for inclusion in data['inclusions']:
+                        if inclusion['type'] == 'service' and 'data' in inclusion:
+                            svc = inclusion['data']
+                            if 'service_id' in svc or 'add_service_id' in svc:
+                                data['services'].append(svc)
+                # Suppliers
+                if not data.get('suppliers'):
+                    data['suppliers'] = []
+                    for inclusion in data['inclusions']:
+                        if inclusion['type'] == 'supplier' and 'data' in inclusion:
+                            supplier_data = inclusion['data']
+                            if 'supplier_id' in supplier_data:
+                                data['suppliers'].append(supplier_data)
+                # Outfits
+                if not data.get('outfits'):
+                    data['outfits'] = []
+                    for inclusion in data['inclusions']:
+                        if inclusion['type'] == 'outfit' and 'data' in inclusion:
+                            outfit_data = inclusion['data']
+                            if 'outfit_id' in outfit_data and not outfit_data.get('gown_package_id'):
+                                outfit_data['gown_package_id'] = outfit_data['outfit_id']
+                            data['outfits'].append(outfit_data)
 
-            # Ensure consistent field names for services array
             if 'services' not in data and 'additional_services' in data:
                 data['services'] = data['additional_services']
 
-            # Add event and its configurations
             events_id = add_event_item(**event_data, **package_config)
 
             if events_id:
-                response = jsonify({
+                return jsonify({
                     'success': True,
                     'message': 'Event created successfully',
                     'events_id': events_id
-                })
-                response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5174')
-                response.headers.add('Access-Control-Allow-Credentials', 'true')
-                return response, 201
+                }), 201
             else:
-                response = jsonify({
+                return jsonify({
                     'success': False,
                     'message': 'Failed to create event'
-                })
-                response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5174')
-                response.headers.add('Access-Control-Allow-Credentials', 'true')
-                return response, 500
+                }), 500
 
         except Exception as e:
             app.logger.error(f"Error creating event: {str(e)}")
-            response = jsonify({
+            return jsonify({
                 'success': False,
                 'message': f'Error creating event: {str(e)}'
-            })
-            response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5174')
-            response.headers.add('Access-Control-Allow-Credentials', 'true')
-            return response, 500
+            }), 500
 
-    @app.route('/wishlist-packages', methods=['POST', 'OPTIONS'])
+
+    @app.route('/wishlist-packages', methods=['POST'])
     @jwt_required()
     def create_wishlist_package_route():
-        if request.method == 'OPTIONS':
-            # Handle preflight request
-            response = jsonify({'message': 'OK'})
-            response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5174')
-            response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-            response.headers.add('Access-Control-Allow-Methods', 'POST,OPTIONS')
-            response.headers.add('Access-Control-Allow-Credentials', 'true')
-            return response, 200
-            
         try:
-            # Get user ID from token
             email = get_jwt_identity()
             userid = get_user_id_by_email(email)
             
             if userid is None:
-                response = jsonify({
+                return jsonify({
                     'success': False,
                     'message': 'User not found'
-                })
-                response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5174')
-                response.headers.add('Access-Control-Allow-Credentials', 'true')
-                return response, 404
+                }), 404
 
             data = request.get_json()
             app.logger.info(f"Received wishlist package data: {data}")
 
-            # Process venue data for the wishlist_venues table
+            # Process venue
             if 'inclusions' in data:
-                # Extract venue data from inclusions if available
                 venue_inclusion = next((item for item in data['inclusions'] if item['type'] == 'venue'), None)
                 if venue_inclusion and 'data' in venue_inclusion:
                     venue_data = venue_inclusion['data']
                     data['venue'] = venue_data
-                    
-                    # Ensure venue_id is set at the top level
                     if 'venue_id' in venue_data and not data.get('venue_id'):
                         data['venue_id'] = venue_data['venue_id']
-                    
-                    # Make sure the venue price is extracted correctly
-                    if 'venue_price' in venue_data:
-                        # Log the venue price from the inclusion
-                        app.logger.info(f"Found venue price in inclusions: {venue_data['venue_price']}")
-                    else:
-                        # If venue_price isn't in the data, try to get it from the database
+                    # Attempt to get venue price if missing
+                    if 'venue_price' not in venue_data:
                         try:
                             venue_id = venue_data['venue_id']
                             cursor = get_db_connection().cursor()
@@ -573,97 +525,62 @@ def init_routes(app):
                             result = cursor.fetchone()
                             if result and result[0]:
                                 venue_data['venue_price'] = float(result[0])
-                                app.logger.info(f"Retrieved venue price from database: {venue_data['venue_price']}")
                             cursor.close()
                         except Exception as e:
                             app.logger.error(f"Error fetching venue price: {e}")
-            
-            # Log the final venue data for debugging
-            if 'venue' in data:
-                app.logger.info(f"Final venue data being passed to create_wishlist_package: {data['venue']}")
 
-            # Check if outfit is in inclusions, if not, set gown_package_id to NULL
-            outfit_inclusion = next((item for item in data['inclusions'] if item['type'] == 'outfit'), None)
+            # Outfit
+            outfit_inclusion = next((item for item in data.get('inclusions', []) if item['type'] == 'outfit'), None)
             if not outfit_inclusion:
-                # If no outfit inclusion exists, set gown_package_id to None
                 data['gown_package_id'] = None
             elif 'data' in outfit_inclusion:
-                # Set gown_package_id from outfit data
-                if 'outfit_id' in outfit_inclusion['data'] and not outfit_inclusion['data'].get('gown_package_id'):
-                    data['gown_package_id'] = outfit_inclusion['data']['outfit_id']
-                elif 'gown_package_id' in outfit_inclusion['data']:
-                    data['gown_package_id'] = outfit_inclusion['data']['gown_package_id']
+                outfit_data = outfit_inclusion['data']
+                if 'outfit_id' in outfit_data and not outfit_data.get('gown_package_id'):
+                    data['gown_package_id'] = outfit_data['outfit_id']
+                elif 'gown_package_id' in outfit_data:
+                    data['gown_package_id'] = outfit_data['gown_package_id']
 
-            # Log the final data going into create_wishlist_package
-            app.logger.info(f"Final data being sent to create_wishlist_package:")
-            app.logger.info(f"- events_id: {data.get('events_id')}")
-            app.logger.info(f"- venue_id: {data.get('venue_id')}")
-            app.logger.info(f"- gown_package_id: {data.get('gown_package_id')}")
-            
-            if 'inclusions' in data:
-                service_inclusions = [inc for inc in data['inclusions'] if inc['type'] == 'service']
-                app.logger.info(f"- service inclusions count: {len(service_inclusions)}")
-                for i, inc in enumerate(service_inclusions):
-                    app.logger.info(f"  - Service {i+1}: {inc.get('data', {}).get('service_id') or inc.get('data', {}).get('add_service_id')}")
-
-            # Create wishlist package and its related data
             wishlist_id = create_wishlist_package(
                 events_id=data.get('events_id'),
                 package_data=data
             )
 
             if wishlist_id:
-                response = jsonify({
+                return jsonify({
                     'success': True,
                     'message': 'Wishlist package created successfully',
                     'wishlist_id': wishlist_id
-                })
-                response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5174')
-                response.headers.add('Access-Control-Allow-Credentials', 'true')
-                return response, 201
+                }), 201
             else:
-                response = jsonify({
+                return jsonify({
                     'success': False,
                     'message': 'Failed to create wishlist package'
-                })
-                response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5174')
-                response.headers.add('Access-Control-Allow-Credentials', 'true')
-                return response, 500
+                }), 500
 
         except Exception as e:
             app.logger.error(f"Error creating wishlist package: {str(e)}")
-            response = jsonify({
+            return jsonify({
                 'success': False,
                 'message': f'Error creating wishlist package: {str(e)}'
-            })
-            response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5174')
-            response.headers.add('Access-Control-Allow-Credentials', 'true')
-            return response, 500
+            }), 500
+
 
     @app.route('/api/suppliers', methods=['GET'])
     def get_suppliers():
         try:
             suppliers = get_available_suppliers()
-            
-            # For debugging purposes
             logging.info(f"Suppliers data: {suppliers}")
-            
-            response = jsonify({
+            return jsonify({
                 'status': 'success',
                 'data': suppliers
-            })
-            response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5174')
-            response.headers.add('Access-Control-Allow-Credentials', 'true')
-            return response, 200
+            }), 200
         except Exception as e:
             logging.error(f"Error fetching suppliers: {e}")
-            response = jsonify({
+            return jsonify({
                 'status': 'error',
                 'message': str(e)
-            })
-            response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5174')
-            response.headers.add('Access-Control-Allow-Credentials', 'true')
-            return response, 500
+            }), 500
+
 
     @app.route('/api/init-test-suppliers', methods=['POST'])
     def init_test_suppliers():
@@ -820,20 +737,16 @@ def init_routes(app):
             # Format the results
             formatted_packages = []
             for package in packages:
-                # Process venue image path
-                venue_image = package[17]  # venue_image is at index 17
+                venue_image = package[17]
                 if venue_image:
-                    # Handle different path formats
                     if '\\' in venue_image:
                         venue_image = venue_image.split('\\')[-1]
                     elif '/' in venue_image:
                         venue_image = venue_image.split('/')[-1]
                     
-                    # If the image is one of our static images, use direct static path
                     static_images = ['grandballroom.png', 'hogwarts.png', 'oceanview.png', 'paseo.png', 'sealavie.png']
                     if any(venue_image.endswith(img) for img in static_images):
                         venue_image = f'/img/venues-img/{venue_image}'
-                    # For uploaded images, use API endpoint
                     else:
                         venue_image = f'/api/venue-image/{venue_image}'
                 
@@ -865,26 +778,18 @@ def init_routes(app):
             cursor.close()
             conn.close()
             
-            response = jsonify({
+            return jsonify({
                 'status': 'success',
                 'data': formatted_packages
             })
             
-            # Add CORS headers
-            response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5174')
-            response.headers.add('Access-Control-Allow-Credentials', 'true')
-            
-            return response
-            
         except Exception as e:
             print(f"Error fetching packages: {str(e)}")
-            response = jsonify({
+            return jsonify({
                 'status': 'error',
                 'message': str(e)
-            })
-            response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5174')
-            response.headers.add('Access-Control-Allow-Credentials', 'true')
-            return response, 500
+            }), 500
+
 
     @app.route('/api/outfits-packages-bg/<path:filename>')
     def serve_outfit_package_background(filename):
@@ -1187,17 +1092,9 @@ def init_routes(app):
                 'message': str(e)
             }), 500
 
-    @app.route('/api/user/update-profile', methods=['PUT', 'OPTIONS'])
+    @app.route('/api/user/update-profile', methods=['PUT'])
     @jwt_required()
     def update_user_profile_route():
-        if request.method == 'OPTIONS':
-            response = jsonify({'message': 'OK'})
-            response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5174')
-            response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-            response.headers.add('Access-Control-Allow-Methods', 'PUT,OPTIONS')
-            response.headers.add('Access-Control-Allow-Credentials', 'true')
-            return response, 200
-
         try:
             # Get the current user's email from JWT token
             email = get_jwt_identity()
@@ -1243,17 +1140,6 @@ def init_routes(app):
                 'status': 'error',
                 'message': str(e)
             }), 500
-
-    @app.after_request
-    def after_request(response):
-        """Add CORS headers to all responses"""
-        # Set standard CORS headers
-        response.headers.set('Access-Control-Allow-Origin', 'http://localhost:5174')
-        response.headers.set('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-        response.headers.set('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
-        response.headers.set('Access-Control-Allow-Credentials', 'true')
-        return response
-
 
     @app.route('/events-by-month', methods=['GET'])
     def events_by_month():
