@@ -9,13 +9,15 @@ def create_app():
     app = Flask(__name__, static_url_path='/static', static_folder='static')
 
     # Configure CORS with simpler setup
-    CORS(app, 
-         resources={r"/*": {"origins": ["http://localhost:5174"],
-                           "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-                           "allow_headers": ["Content-Type", "Authorization", "Access-Control-Allow-Credentials"],
-                           "supports_credentials": True,
-                           "expose_headers": ["Content-Range", "X-Content-Range"]}},
-         supports_credentials=True)
+    CORS(app,
+         origins=[
+             "http://localhost:5173",
+             "https://eims-client-frontend.vercel.app"
+         ],
+         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+         allow_headers=["Content-Type", "Authorization"],
+         supports_credentials=True
+    )
 
     # Set up the Flask-JWT-Extended configuration
     app.config['JWT_SECRET_KEY'] = os.getenv('eims', 'fallback_jwt_secret')  # Ensure you set a JWT secret key

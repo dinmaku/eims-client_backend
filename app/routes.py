@@ -25,16 +25,6 @@ import uuid
 logging.basicConfig(level=logging.DEBUG)
 
 def init_routes(app):
-    
-    @app.route('/', defaults={'path': ''}, methods=['OPTIONS'])
-    @app.route('/<path:path>', methods=['OPTIONS'])
-    def handle_options(path):
-        response = jsonify({'message': 'OK'})
-        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5174')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-        response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        return response, 200
 
     @app.route('/login', methods=['POST'])
     def login():
