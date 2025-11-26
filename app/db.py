@@ -18,10 +18,13 @@ def get_db_connection():
 
     url = urlparse(DATABASE_URL)
 
-    # SSL required for external Render DB
+    # SSL configuration
     ssl_context = None
     if url.hostname not in ("localhost", "127.0.0.1") and not url.hostname.endswith(".render.internal"):
+        # Create SSL context that ignores self-signed certificate errors
         ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
 
     try:
         logger.info(f"Connecting to database at {url.hostname}...")
